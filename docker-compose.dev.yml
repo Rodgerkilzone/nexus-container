@@ -1,0 +1,29 @@
+services:
+  node:
+    command: ["nodemon", "--legacy-watch", "index.js"]
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    environment:
+      NODE_ENV: development
+
+react:
+  build:
+    context: ./frontend
+    dockerfile: Dockerfile.dev
+  volumes:
+    - ./frontend:/app
+    - /app/node_modules
+  environment:
+    CHOKIDAR_USEPOLLING: true
+    
+  ports:
+    - "3000:3000"
+  networks:
+    - app-network
+
+
+  nginx:
+    profiles: ["prod"]
+
+    
