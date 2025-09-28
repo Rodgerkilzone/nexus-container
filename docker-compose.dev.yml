@@ -26,4 +26,130 @@ react:
   nginx:
     profiles: ["prod"]
 
-    
+# services:
+  mongo:
+    image: mongo:latest
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      wg-network:
+        ipv4_address: 172.20.0.10
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  node:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    environment:
+      MONGO_URI: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@172.20.0.10:27017/myapp?authSource=admin
+      NODE_ENV: development
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    depends_on:
+      - mongo
+      - wireguard
+    ports:
+      # - "51820:51820/udp"
+      - "5000:5000"
+    networks:
+      wg-network:
+        ipv4_address: 172.20.0.11
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.ip_forward=1
+    # Single entrypoint and command combination
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      "
+      # Install iproute2 for routing commands
+      if command -v apt-get > /dev/null; then
+        apt-get update && apt-get install -y iproute2 iputils-ping
+      elif command -v apk > /dev/null; then
+        apk add --no-cache iproute2 iputils
+      fi
+      
+      # Add route to WireGuard tunnel network via WireGuard container
+      ip route add 10.13.13.0/24 via 172.20.0.12
+      
+      # Start the original command
+      exec nodemon --legacy-watch index.js
+      "
+
+  wireguard:
+    image: linuxserver/wireguard:latest
+    restart: always
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+      - SERVERURL=${WIREGUARD_SERVERURL:-192.168.1.200}
+      - SERVERPORT=${WIREGUARD_SERVERPORT:-51820}
+      - PEERS=${WIREGUARD_PEERS:-1}
+      - PEERDNS=${WIREGUARD_PEERDNS:-auto}
+      - INTERNAL_SUBNET=${WIREGUARD_INTERNAL_SUBNET:-10.13.13.0}
+    volumes:
+      - ./wireguard/wg_confs:/config/wg_confs
+      - ./scripts:/scripts:ro
+      - wireguard_config:/config
+    networks:
+      wg-network:
+        ipv4_address: 172.20.0.12
+      eth0-macvlan:
+        ipv4_address: 192.168.1.200
+    ports:
+      - "51820:51820/udp"
+      - "5000:5000"
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.src_valid_mark=1
+      # Enable forwarding between Docker network and WireGuard tunnel
+      - net.ipv4.conf.all.forwarding=1
+    healthcheck:
+      test: ["CMD", "wg", "show"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  wg-network:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "true"
+      com.docker.network.bridge.host_binding_ipv4: "0.0.0.0"
+      # Enable IP forwarding on the bridge
+      com.docker.network.bridge.enable_ip_masquerade: "true"
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1
+
+  eth0-macvlan:
+    driver: macvlan
+    driver_opts:
+      parent: eth0
+    ipam:
+      driver: default
+      config:
+        - subnet: 192.168.1.0/24
+          gateway: 192.168.1.1
+
+volumes:
+  mongo_data:
+    driver: local
+  wireguard_config:
+    driver: local

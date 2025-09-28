@@ -2,87 +2,28 @@ tunnel: b7f60d36-f98a-4f69-bcc6-d7524604d484
 credentials-file: /etc/cloudflared/credentials.json
 
 ingress:
-  # Main domain - points to nginx (serves React app and proxies /api to node)
+  # Main domain - points to nginx (serves React app and proxies /api to app-wireguard)
   - hostname: grapevine.co.ke
-    service: http://nginx:80
-    originRequest:
-      originServerName: grapevine.co.ke
-      noTLSVerify: false
-      disableChunkedEncoding: true
-      http2Origin: true
-      proxyTcpKeepalive: 30s
-      proxyNoHappyEyeballs: false
-      proxyKeepaliveConnections: 100
-      proxyKeepaliveTimeout: 90s
+    service: http://react:3000
 
   # www subdomain
   - hostname: www.grapevine.co.ke
-    service: http://nginx:80
-    originRequest:
-      originServerName: www.grapevine.co.ke
-      noTLSVerify: false
-      disableChunkedEncoding: true
-      http2Origin: true
-      proxyTcpKeepalive: 30s
-      proxyNoHappyEyeballs: false
-      proxyKeepaliveConnections: 100
-      proxyKeepaliveTimeout: 90s
+    service: http://react:3000
 
   # API subdomain
   - hostname: api.grapevine.co.ke
-    service: http://node:5000
-    originRequest:
-      originServerName: api.grapevine.co.ke
-      noTLSVerify: false
-      http2Origin: true
-      proxyTcpKeepalive: 30s
-      proxyNoHappyEyeballs: false
-      proxyKeepaliveConnections: 100
-      proxyKeepaliveTimeout: 90s
+    service: http://app-wireguard:5000
 
+  - hostname: portal.grapevine.co.ke
+    service: http://react:3000
   # VPN admin interface
   - hostname: vpn.grapevine.co.ke
-    service: udp://node:51820
-    originRequest:
-      noTLSVerify: false
-      http2Origin: true
-      proxyTcpKeepalive: 30s
-      proxyNoHappyEyeballs: false
-      proxyKeepaliveConnections: 100
-      proxyKeepaliveTimeout: 90s
-
-  - hostname: radius.grapevine.co.ke
-    service: udp://node:1812
-    originRequest:
-      noTLSVerify: false
-      http2Origin: true
-      proxyTcpKeepalive: 30s
-      proxyNoHappyEyeballs: false
-      proxyKeepaliveConnections: 100
-      proxyKeepaliveTimeout: 90s
-
-  - hostname: radius-acct.grapevine.co.ke
-    service: udp://node:1813
-    originRequest:
-      noTLSVerify: false
-      http2Origin: true
-      proxyTcpKeepalive: 30s
-      proxyNoHappyEyeballs: false
-      proxyKeepaliveConnections: 100
-      proxyKeepaliveTimeout: 90s
+    service: udp://app-wireguard:51820
 
   # Catch-all for any other subdomains
   - hostname: "*.grapevine.co.ke"
-    service: http://nginx:80
-    originRequest:
-      originServerName: grapevine.co.ke
-      noTLSVerify: false
-      disableChunkedEncoding: true
-      http2Origin: true
-      proxyTcpKeepalive: 30s
-      proxyNoHappyEyeballs: false
-      proxyKeepaliveConnections: 100
-      proxyKeepaliveTimeout: 90s
+    service: http://react:3000
+
 
   # Required catch-all rule (must be last)
   - service: http_status:404

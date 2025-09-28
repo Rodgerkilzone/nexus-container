@@ -1,3 +1,4 @@
+
 services:
   # mongo:
   #   image: mongo:latest
@@ -10,76 +11,71 @@ services:
   #   networks:
   #     - app-network
   #   healthcheck:
-  #     test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
+  #     test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
   #     interval: 10s
   #     timeout: 5s
   #     retries: 3
+  #   ports:
+  #     - "27018:27017"  
 
-  # node:
+  # app-wireguard:
   #   build:
   #     context: ./backend
   #     dockerfile: Dockerfile
   #   restart: always
-  #   command: nodemon --legacy-watch index.js
   #   environment:
   #     MONGO_URI: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongo:27017/myapp?authSource=admin
   #     NODE_ENV: development
+  #     # WireGuard environment variables
+  #     WG_HOST: ${WIREGUARD_SERVERURL:-localhost}
+  #     WG_PORT: ${WIREGUARD_SERVERPORT:-51820}
   #   volumes:
   #     - ./backend:/app
   #     - /app/node_modules
+  #     - ./wireguard/wg_confs:/etc/wireguard  # Mount WireGuard configs
   #   depends_on:
   #     - mongo
   #   networks:
-  #     - wg-network
-  #   expose:
-  #     - 5000
-  #     - 1812
-  #     - 1813
+  #     - app-network
   #   ports:
-  #     - "5000:5000"
-  
-
-        
-  wireguard:
-      image: linuxserver/wireguard:latest
-      restart: always
-      environment:
-        - PUID=1000
-        - PGID=1000
-        - TZ=Etc/UTC
-      volumes:
-        - ./wireguard/wg_confs:/config/wg_confs
-      networks:
-        - wg-network
-      ports:
-        - "51820:51820/udp"
-      cap_add:
-        - NET_ADMIN
-        - SYS_MODULE
-      sysctls:
-        - net.ipv4.ip_forward=1
-      healthcheck:
-        test: ["CMD", "wg", "show"]
-        interval: 30s
-        timeout: 10s
-        retries: 3
-  
-  # react:
-  #     build:
-  #       context: ./frontend
-  #       dockerfile: Dockerfile.dev
+  #     - "5000:5000"        # Node.js app
+  #     - "51820:51820/udp"  # WireGuard
+  #   cap_add:
+  #     - NET_ADMIN
+  #     - SYS_MODULE
+  #   sysctls:
+  #     - net.ipv4.ip_forward=1
+  #     - net.ipv4.conf.all.src_valid_mark=1
+  #   privileged: true  # Required for WireGuard
+  #   healthcheck:
+  #     test: ["CMD", "supervisorctl", "status"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  # cloudflared:
+  #     image: cloudflare/cloudflared:latest
+  #     restart: always
   #     volumes:
-  #       - ./frontend:/app
-  #       - /app/node_modules
-  #     environment:
-  #       CHOKIDAR_USEPOLLING: true
-  #       NODE_ENV: development
-  #       WATCHPACK_POLLING: true
-  #     ports:
-  #       - "3000:3000"
+  #       - ./cloudflared/config.yml:/etc/cloudflared/config.yml:ro
+  #       - ./cloudflared/credentials.json:/etc/cloudflared/credentials.json:ro
+  #     command: --no-autoupdate --config /etc/cloudflared/config.yml tunnel run
   #     networks:
   #       - app-network
-
+      # depends_on:
+      #     - nginx
+  # react:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile.dev
+  #   volumes:
+  #     - ./frontend:/app
+  #     - /app/node_modules
+  #   environment:
+  #     CHOKIDAR_USEPOLLING: true
+  #   ports:
+  #     - "3000:3000"
+  #   networks:
+  #     - app-network
   # nginx:
   #     build:
   #       context: ./frontend
@@ -91,24 +87,10 @@ services:
   #       - "80:80"
   #     depends_on:
   #       - node
-
-  # cloudflared:
-  #     image: cloudflare/cloudflared:latest
-  #     restart: always
-  #     volumes:
-  #       - ./cloudflared/config.yml:/etc/cloudflared/config.yml:ro
-  #       - ./cloudflared/credentials.json:/etc/cloudflared/credentials.json:ro
-  #     command: --no-autoupdate --config /etc/cloudflared/config.yml tunnel run
-  #     networks:
-  #       - app-network
-      # depends_on:
-      #   - nginx
-
 networks:
-    app-network:
-      driver: bridge
-    wg-network:
-      driver: bridge
+  app-network:
+    driver: bridge
 
 volumes:
-    mongo_data:
+  mongo_data:
+    driver: local
