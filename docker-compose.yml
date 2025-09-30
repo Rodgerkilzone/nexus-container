@@ -1,92 +1,140 @@
+version: '3.8'
 
 services:
-  # mongo:
-  #   image: mongo:latest
-  #   restart: always
-  #   environment:
-  #     MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME}
-  #     MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
-  #   volumes:
-  #     - mongo_data:/data/db
-  #   networks:
-  #     - app-network
-  #   healthcheck:
-  #     test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 3
-  #   ports:
-  #     - "27018:27017"  
+  mongo:
+    image: mongo:latest
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    ports:
+      - "27018:27017"
 
-  # app-wireguard:
-  #   build:
-  #     context: ./backend
-  #     dockerfile: Dockerfile
-  #   restart: always
-  #   environment:
-  #     MONGO_URI: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongo:27017/myapp?authSource=admin
-  #     NODE_ENV: development
-  #     # WireGuard environment variables
-  #     WG_HOST: ${WIREGUARD_SERVERURL:-localhost}
-  #     WG_PORT: ${WIREGUARD_SERVERPORT:-51820}
-  #   volumes:
-  #     - ./backend:/app
-  #     - /app/node_modules
-  #     - ./wireguard/wg_confs:/etc/wireguard  # Mount WireGuard configs
-  #   depends_on:
-  #     - mongo
-  #   networks:
-  #     - app-network
-  #   ports:
-  #     - "5000:5000"        # Node.js app
-  #     - "51820:51820/udp"  # WireGuard
-  #   cap_add:
-  #     - NET_ADMIN
-  #     - SYS_MODULE
-  #   sysctls:
-  #     - net.ipv4.ip_forward=1
-  #     - net.ipv4.conf.all.src_valid_mark=1
-  #   privileged: true  # Required for WireGuard
-  #   healthcheck:
-  #     test: ["CMD", "supervisorctl", "status"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-  # cloudflared:
-  #     image: cloudflare/cloudflared:latest
-  #     restart: always
-  #     volumes:
-  #       - ./cloudflared/config.yml:/etc/cloudflared/config.yml:ro
-  #       - ./cloudflared/credentials.json:/etc/cloudflared/credentials.json:ro
-  #     command: --no-autoupdate --config /etc/cloudflared/config.yml tunnel run
-  #     networks:
-  #       - app-network
-      # depends_on:
-      #     - nginx
-  # react:
-  #   build:
-  #     context: ./frontend
-  #     dockerfile: Dockerfile.dev
-  #   volumes:
-  #     - ./frontend:/app
-  #     - /app/node_modules
-  #   environment:
-  #     CHOKIDAR_USEPOLLING: true
-  #   ports:
-  #     - "3000:3000"
-  #   networks:
-  #     - app-network
-  # nginx:
-  #     build:
-  #       context: ./frontend
-  #       dockerfile: Dockerfile
-  #     restart: always
-  #     networks:
-  #       - app-network
-  #     ports:
-  #       - "80:80"
-  #     depends_on:
-  #       - node
+  app-wireguard:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    environment:
+      MONGO_URI: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongo:27017/myapp?authSource=admin
+      NODE_ENV: development
+      WG_HOST: ${WIREGUARD_SERVERURL:-localhost}
+      WG_PORT: ${WIREGUARD_SERVERPORT:-51820}
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+      - ./wireguard/wg_confs:/etc/wireguard
+    depends_on:
+      - mongo
+    networks:
+      - app-network
+    ports:
+      - "5000:5000"        # Node.js app
+      - "51820:51820/udp"  # WireGuard
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.src_valid_mark=1
+    privileged: true
+    healthcheck:
+      test: ["CMD", "supervisorctl", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  pinggy-wireguard:
+    image: pinggy/pinggy:latest
+    restart: always
+    command: -p 443 -R0:localhost:51820 udp@a.pinggy.io
+    networks:
+      - app-network
+    depends_on:
+      - app-wireguard
+    environment:
+      PINGGY_TOKEN: ${PINGGY_TOKEN:-}  # Include if token is required, else remove
+    stdin_open: true
+    tty: true
+    ports:
+      - "443:443"  # Expose Pinggy's external port
+
+  pinggy-http:
+    image: pinggy/pinggy:latest
+    restart: always
+    command: -p 443 -R0:localhost:5000 a.pinggy.io
+    networks:
+      - app-network
+    depends_on:
+      - app-wireguard
+    environment:
+      PINGGY_TOKEN: ${PINGGY_TOKEN:-}  # Include if token is required, else remove
+    stdin_open: true
+    tty: true
+    ports:
+      - "444:443"  # Use a different external port to avoid conflict with pinggy-wireguard
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: always
+    volumes:
+      - ./cloudflared/config.yml:/etc/cloudflared/config.yml:ro
+      - ./cloudflared/credentials.json:/etc/cloudflared/credentials.json:ro
+    command: --no-autoupdate --config /etc/cloudflared/config.yml tunnel run
+    networks:
+       - app-network
+        # depends_on:
+        #     - nginx
+    # react:
+    #   build:
+    #     context: ./frontend
+    #     dockerfile: Dockerfile.dev
+    #   volumes:
+    #     - ./frontend:/app
+    #     - /app/node_modules
+    #   environment:
+    #     CHOKIDAR_USEPOLLING: true
+    #   ports:
+    #     - "3000:3000"
+    #   networks:
+    #     - app-network
+    # nginx:
+    #     build:
+    #       context: ./frontend
+    #       dockerfile: Dockerfile
+    #     restart: always
+    #     networks:
+    #       - app-network
+    #     ports:
+    #       - "80:80"
+    #     depends_on:
+    #       - 
+    # tailscale:
+    #     image: tailscale/tailscale:latest
+    #     container_name: tailscale
+    #     hostname: my-docker-container  # Optional: Custom name in your tailnet
+    #     environment:
+    #       - TS_AUTHKEY=k2EWqgFDNt11CNTRL # Your auth key
+    #       - TS_STATE_DIR=/var/lib/tailscale  # Persist state
+    #       - TS_USERSPACE=false  # Use kernel networking (faster; default is userspace)
+    #       - TS_EXTRA_ARGS=--advertise-tags=tag:docker  # Optional: Add tags for ACLs
+    #     volumes:
+    #       - ./tailscale-state:/var/lib/tailscale  # Persist state on host
+    #     devices:
+    #       - /dev/net/tun:/dev/net/tun  # For kernel networking
+    #     cap_add:
+    #       - NET_ADMIN  # Required for kernel networking
+    #     restart: unless-stopped
+
 networks:
   app-network:
     driver: bridge

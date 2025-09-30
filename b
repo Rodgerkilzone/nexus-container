@@ -183,7 +183,7 @@ volumes:
   #     - ./scripts/setup_bridge.sh:/setup_bridge.sh
   #     - /var/run/docker.sock:/var/run/docker.sock  # Access Docker daemon
   #   command: sh /setup_bridge.sh
-  #   depends_on:
+  #   depends_on:a
   #     - wireguard
   #     - node
   #   network_mode: host  # Access host network interfaces

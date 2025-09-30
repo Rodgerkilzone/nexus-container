@@ -1,0 +1,11 @@
+# Dockerfile.pinggy
+FROM pinggy/pinggy:latest
+
+# Install socat using apk (Alpine package manager)
+RUN apk add --no-cache socat
+
+# Copy and set up entrypoint
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
